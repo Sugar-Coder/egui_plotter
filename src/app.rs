@@ -8,6 +8,9 @@ pub struct TemplateApp {
     // this how you opt-out of serialization of a member
     #[serde(skip)]
     value: f32,
+
+    #[serde(skip)]
+    picked_path: Option<String>,
 }
 
 impl Default for TemplateApp {
@@ -16,6 +19,7 @@ impl Default for TemplateApp {
             // Example stuff:
             label: "Hello World!".to_owned(),
             value: 2.7,
+            picked_path: None,
         }
     }
 }
@@ -45,7 +49,7 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let Self { label, value } = self;
+        let Self { label, value, picked_path } = self;
 
         // Examples of how to create different panels and windows.
         // Pick whichever suits you.
@@ -59,6 +63,11 @@ impl eframe::App for TemplateApp {
                 ui.menu_button("File", |ui| {
                     if ui.button("Quit").clicked() {
                         _frame.close();
+                    }
+                    if ui.button("Open File").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().pick_file() {
+                            self.picked_path = Some(path.display().to_string());
+                        }
                     }
                 });
             });
