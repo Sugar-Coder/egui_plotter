@@ -2,7 +2,6 @@
 
 use eframe::egui;
 
-
 fn main() {
     let options = eframe::NativeOptions {
         drag_and_drop_support: true,
