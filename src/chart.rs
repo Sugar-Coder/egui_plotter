@@ -1,20 +1,30 @@
-use std::f64::consts::TAU;
-
 use calamine::{Range, DataType};
 use eframe::egui;
 use egui::*;
-use plot::{Legend, Plot, Line, Points};
+use plot::{Legend, Plot, Points};
+
+struct NamedColumn {
+    name: String,
+    data: Vec<DataType>,
+}
+
+impl NamedColumn {
+    fn new(name: String, data: Vec<DataType>) -> Self {
+        Self { name: name, data: data }
+    }
+}
 
 pub struct ChartsDemo {
-    rows: Option<Range<DataType>>,
+    // r: Option<Range<DataType>>,
     pub filename: Option<String>,
+    columns: Vec<NamedColumn>,
 }
 
 impl Default for ChartsDemo {
     fn default() -> Self {
         Self { 
-            rows: None,
             filename: None,
+            columns: Vec::new(),
         }
     }
 }
@@ -22,34 +32,88 @@ impl Default for ChartsDemo {
 impl ChartsDemo {
     // todo add update data method
     pub fn ui(&mut self, ui: &mut Ui) -> Response {
-        let yellow = Color32::from_rgb(248, 252, 168);
-        let n = 50;
-        let sin_values: Vec<_> = (0..=n)
-            .map(|i| remap(i as f64, 0.0..=n as f64, -TAU..=TAU))
-            .map(|i| [i, i.sin()])
-            .collect();
-        let mut sin_values2: Vec<_> = sin_values.clone().iter().map(|xy| [xy[0], xy[1] + 2.0]).collect();
-        let line = Line::new(sin_values.clone()).fill(-1.5);
-        let points = Points::new(sin_values).stems(-1.0).radius(1.5);
-        let points2 = Points::new(sin_values2.split_off(n/2)).radius(2.0).color(yellow);
+        let row_num = self.columns[0].data.len();
+        let mut column_name_vec: Vec<&String> = Vec::new();
+        let mut points_vec: Vec<Points> = Vec::new();
+        for col in &self.columns {
+            if col.name != "date" && col.data[0].is_float() {
+                let values: Vec<_> = (0..row_num)
+                    .map(|i| [i as f64, col.data[i].get_float().unwrap()])
+                    .collect();
+                // vals_vec.push(values);
+                points_vec.push(Points::new(values).radius(1.5));
+                column_name_vec.push(&col.name);
+            }
+        }
 
         Plot::new("Box Plot Demo")
             .legend(Legend::default())
             .show(ui, |plot_ui| {
-                plot_ui.points(points.name("Points with stems"));
-                plot_ui.points(points2.name("Points2"));
-                plot_ui.line(line.name("Line with fill"));
+                loop {
+                    if let Some(points) = points_vec.pop() {
+                        let name = column_name_vec.pop().unwrap();
+                        plot_ui.points(points.name(name));
+                    } else {
+                        break;
+                    }
+                }
             })
             .response
     }
 
-    pub fn load_excel_data(&mut self, filename: String, rows: Option<Range<DataType>>) {
-        self.rows = rows;
+    fn parse_column(&mut self, col_name: String, r: &Range<DataType>) -> Option<Vec<DataType>> {
+        let mut rows = r.rows();
+        if let Some(first_row) = rows.next() {
+            let mut index: usize = first_row.len();
+            for (i, cell) in first_row.iter().enumerate() {
+                if cell.is_string() && cell.to_string() == col_name {
+                    index = i;
+                    break;
+                }
+            }
+            // cannot find the column
+            if index == first_row.len() {
+                return None;
+            }
+            let col_data: Vec<_> = rows.map(|row| row[index].clone()).collect();
+            return Some(col_data);
+        }
+        None
+    }
+
+    pub fn load_excel_data(&mut self, filename: String, r: Range<DataType>) {
         self.filename = Some(filename);
+        let column_names = vec!["date", "high", "low", "open", "close"];
+        for col_name in column_names {
+            if let Some(col_data) = self.parse_column(col_name.to_string(), &r) {
+                self.columns.push(NamedColumn::new(col_name.to_string(), col_data));
+            }
+        }
     }
 
     pub fn clear(&mut self) {
-        self.rows = None;
         self.filename = None;
+        self.columns.clear();
     }
+}
+
+#[test]
+fn test_parse_column() {
+    let mut demo = ChartsDemo::default();
+    use crate::reader::read_excel;
+    let path = "/Users/sjy/Downloads/former_reinstatement.xlsx".to_string();
+    demo.load_excel_data(path.clone(), read_excel(&path).unwrap());
+
+    for col in &demo.columns {
+        println!("col:{}, size={}", col.name, col.data.len());
+    }
+    // let col = &demo.columns[0];
+    // println!("column {}", col.name);
+    // let mut count = 5;
+    // for cell in &col.data {
+    //     if count > 0 {
+    //         println!("{}", cell);
+    //         count -= 1;
+    //     }
+    // }
 }

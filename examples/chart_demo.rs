@@ -52,7 +52,7 @@ impl ChartsDemo {
         let n = 50;
         let mut sin_values: Vec<_> = (0..=n)
             .map(|i| remap(i as f64, 0.0..=n as f64, -TAU..=TAU))
-            .map(|i| [i, i.sin()])
+            .map(|i| [i + 2021 as f64, i.sin()])
             .collect();
         let mut sin_values2: Vec<_> = sin_values.clone().iter().map(|xy| [xy[0], xy[1] + 2.0]).collect();
         let line = Line::new(sin_values.clone()).fill(-1.5);

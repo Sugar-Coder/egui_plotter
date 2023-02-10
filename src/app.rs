@@ -60,7 +60,7 @@ impl eframe::App for TemplateApp {
                             let filepath = path.display().to_string();
                             if let Some(excel_data) = read_excel(&filepath) {
                                 // successfully read file
-                                self.chart_demo.load_excel_data(path.display().to_string(), Some(excel_data));
+                                self.chart_demo.load_excel_data(path.display().to_string(), excel_data);
                                 self.info_label = format!("{} opened", filepath);
                             } else {
                                 self.info_label = format!("cannot open {}", filepath);

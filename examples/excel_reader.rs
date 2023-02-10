@@ -5,12 +5,14 @@ fn main() {
     let mut excel: Xlsx<_> = open_workbook(path).unwrap();
     if let Some(Ok(r)) = excel.worksheet_range("Sheet1") {
         let mut count = 5;
-        for row in r.rows() {
-            println!("row={:?}, row[0]={:?}", row, row[0]);
-            count -= 1;
-            if count <= 0 {
-                break;
-            }
-        }
+        let first_row = r.rows().next().unwrap();
+        println!("{}, {}", first_row[0].is_string(), first_row[0].to_string() == "date");
+        // for row in r.rows() {
+        //     println!("row={:?}, row[0]={:?}", row, row[0]);
+        //     count -= 1;
+        //     if count <= 0 {
+        //         break;
+        //     }
+        // }
     }
 }
