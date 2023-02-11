@@ -1,13 +1,14 @@
-use crate::{ChartsDemo, reader::read_excel};
+use crate::{ChartsDemo, reader::{read_excel, read_excel_wasm}};
+use rfd::AsyncFileDialog;  // for wasm
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
+
 pub struct TemplateApp {
-    #[serde(skip)]
     info_label: String,
-    #[serde(skip)]
     chart_demo: ChartsDemo,
+    data_channel: (
+        std::sync::mpsc::Sender<Vec<u8>>,
+        std::sync::mpsc::Receiver<Vec<u8>>,
+    ),  // for wasm rfd open file async
 }
 
 impl Default for TemplateApp {
@@ -15,21 +16,22 @@ impl Default for TemplateApp {
         Self {
             info_label: "Select file and plot".to_string(),
             chart_demo: ChartsDemo::default(),
+            data_channel: std::sync::mpsc::channel(),
         }
     }
 }
 
 impl TemplateApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
+        // if let Some(storage) = cc.storage {
+        //     return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+        // }
 
         Default::default()
     }
@@ -37,9 +39,9 @@ impl TemplateApp {
 
 impl eframe::App for TemplateApp {
     /// Called by the frame work to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
-    }
+    // fn save(&mut self, storage: &mut dyn eframe::Storage) {
+    //     eframe::set_value(storage, eframe::APP_KEY, self);
+    // }
 
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
@@ -67,7 +69,8 @@ impl eframe::App for TemplateApp {
             ui.label(format!("{}", self.info_label));
             ui.horizontal(|ui| {
                 if ui.button("Open File").clicked() {
-                    if let Some(path) = rfd::FileDialog::new().pick_file() {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Some(path) = rfd::FileDialog::new().add_filter("excel", &["xlsx"]).pick_file() {
                         let filepath = path.display().to_string();
                         if let Some(excel_data) = read_excel(&filepath) {
                             // successfully read file
@@ -77,7 +80,48 @@ impl eframe::App for TemplateApp {
                             self.info_label = format!("cannot open {}", filepath);
                         }
                     }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let task = AsyncFileDialog::new()
+                                .add_filter("excel", &["xlsx"])
+                                .set_directory("/")
+                                .pick_file();
+                        let data_sender = self.data_channel.0.clone();
+                        execute(async move {
+                            let file = task.await;
+                            if let Some(file) = file {
+                                // If you are on native platform you can just get the path
+                                // #[cfg(not(target_arch = "wasm32"))]
+                                // println!("{:?}", file.path());
+                    
+                                // If you care about wasm support you just read() the file
+                                let raw_data = file.read().await;
+                                data_sender.send(raw_data).ok();
+                            }
+                        });
+                        loop {
+                            match self.data_channel.1.recv() {
+                                Ok(rdata) => {
+                                    // Process FileOpen and other messages
+                                    if let Some(excel_data) = read_excel_wasm(rdata) {
+                                        // successfully read file
+                                        self.chart_demo.load_excel_data("excel_file".to_string(), excel_data);
+                                        self.info_label = "click 'Web Open' to show".to_string();
+                                    } else {
+                                        self.info_label = "cannot open excel file".to_string();
+                                    }
+                                    break;
+                                }
+                                Err(_) => {
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
+                // if ui.button("Web").clicked() {
+                //     self.info_label = "excel file opened".to_string();
+                // }
                 if ui.button("Close file").clicked() {
                     self.chart_demo.clear();
                     self.info_label = "Select file and plot".to_string();
@@ -102,4 +146,11 @@ impl eframe::App for TemplateApp {
             egui::warn_if_debug_build(ui);
         });
     }
+}
+
+use std::future::Future;
+
+#[cfg(target_arch = "wasm32")]
+fn execute<F: Future<Output = ()> + 'static>(f: F) {
+    wasm_bindgen_futures::spawn_local(f);
 }
