@@ -55,22 +55,6 @@ impl eframe::App for TemplateApp {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    if ui.button("Open File").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_file() {
-                            let filepath = path.display().to_string();
-                            if let Some(excel_data) = read_excel(&filepath) {
-                                // successfully read file
-                                self.chart_demo.load_excel_data(path.display().to_string(), excel_data);
-                                self.info_label = format!("{} opened", filepath);
-                            } else {
-                                self.info_label = format!("cannot open {}", filepath);
-                            }
-                        }
-                    }
-                    if ui.button("Close file").clicked() {
-                        self.chart_demo.clear();
-                        self.info_label = "Select file and plot".to_string();
-                    }
                     if ui.button("Quit").clicked() {
                         _frame.close();
                     }
@@ -82,18 +66,34 @@ impl eframe::App for TemplateApp {
             // The central panel the region left after adding TopPanel's and SidePanel's
             ui.label(format!("{}", self.info_label));
             ui.horizontal(|ui| {
-                ui.collapsing("Instructions", |ui| {
-                    ui.label("Pan by dragging, or scroll (+ shift = horizontal).");
-                    ui.label("Box zooming: Right click to zoom in and zoom out using a selection.");
-                    if cfg!(target_arch = "wasm32") {
-                        ui.label("Zoom with ctrl / ⌘ + pointer wheel, or with pinch gesture.");
-                    } else if cfg!(target_os = "macos") {
-                        ui.label("Zoom with ctrl / ⌘ + scroll.");
-                    } else {
-                        ui.label("Zoom with ctrl + scroll.");
+                if ui.button("Open File").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_file() {
+                        let filepath = path.display().to_string();
+                        if let Some(excel_data) = read_excel(&filepath) {
+                            // successfully read file
+                            self.chart_demo.load_excel_data(path.display().to_string(), excel_data);
+                            self.info_label = format!("{} opened", filepath);
+                        } else {
+                            self.info_label = format!("cannot open {}", filepath);
+                        }
                     }
-                    ui.label("Reset view with double-click.");
-                });
+                }
+                if ui.button("Close file").clicked() {
+                    self.chart_demo.clear();
+                    self.info_label = "Select file and plot".to_string();
+                }
+            });
+            ui.collapsing("Instructions", |ui| {
+                ui.label("Pan by dragging, or scroll (+ shift = horizontal).");
+                ui.label("Box zooming: Right click to zoom in and zoom out using a selection.");
+                if cfg!(target_arch = "wasm32") {
+                    ui.label("Zoom with ctrl / ⌘ + pointer wheel, or with pinch gesture.");
+                } else if cfg!(target_os = "macos") {
+                    ui.label("Zoom with ctrl / ⌘ + scroll.");
+                } else {
+                    ui.label("Zoom with ctrl + scroll.");
+                }
+                ui.label("Reset view with double-click.");
             });
             
             if self.chart_demo.filename != None {

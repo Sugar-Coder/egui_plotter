@@ -1,4 +1,8 @@
 # egui plotter
 use egui version 0.20.0
 
-功能，上传文件，画图，wasm
+## dependencies
+eframe - wasm
+rfd - upload file
+chrono - process date
+calamine - read excel file
