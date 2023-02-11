@@ -1,30 +1,22 @@
+use std::collections::HashMap;
+use std::ops::RangeInclusive;
 use calamine::{Range, DataType};
 use eframe::egui;
 use egui::*;
-use plot::{Legend, Plot, Points};
+use plot::{Legend, Plot, Points, PlotPoint};
+use chrono::{NaiveDate, Datelike};
 
-struct NamedColumn {
-    name: String,
-    data: Vec<DataType>,
-}
-
-impl NamedColumn {
-    fn new(name: String, data: Vec<DataType>) -> Self {
-        Self { name: name, data: data }
-    }
-}
 
 pub struct ChartsDemo {
-    // r: Option<Range<DataType>>,
-    pub filename: Option<String>,
-    columns: Vec<NamedColumn>,
+    pub filename: Option<String>, // the excel file name
+    columns: HashMap<String, Vec<DataType>>,
 }
 
 impl Default for ChartsDemo {
     fn default() -> Self {
         Self { 
             filename: None,
-            columns: Vec::new(),
+            columns: HashMap::new(),
         }
     }
 }
@@ -32,22 +24,52 @@ impl Default for ChartsDemo {
 impl ChartsDemo {
     // todo add update data method
     pub fn ui(&mut self, ui: &mut Ui) -> Response {
-        let row_num = self.columns[0].data.len();
+        let row_num = self.columns["date"].len();
         let mut column_name_vec: Vec<&String> = Vec::new();
         let mut points_vec: Vec<Points> = Vec::new();
-        for col in &self.columns {
-            if col.name != "date" && col.data[0].is_float() {
+        
+        let begin_date = self.columns["date"][0].to_string();
+        let begin_nums_day = date_to_num_days(&begin_date);
+        let x_axis_value: Vec<i32> = self.columns["date"].iter()
+                                            .map(|s| date_to_num_days(&s.to_string()) - begin_nums_day)
+                                            .collect();
+        
+
+        for (col_name, col_data) in &self.columns {
+            if col_name != "date" && col_data[0].is_float() {
                 let values: Vec<_> = (0..row_num)
-                    .map(|i| [i as f64, col.data[i].get_float().unwrap()])
+                    .map(|i| [x_axis_value[i] as f64, col_data[i].get_float().unwrap()])
                     .collect();
                 // vals_vec.push(values);
                 points_vec.push(Points::new(values).radius(1.5));
-                column_name_vec.push(&col.name);
+                column_name_vec.push(&col_name);
             }
         }
+        // 使用move，让closure能使用外部参数
+        let x_fmt = move |x: f64, range: &RangeInclusive<f64>| {
+            if x < 0.0 || x >= *range.end() {
+                // No labels outside value bounds
+                String::new()
+            } else {
+                // Date
+                let date = NaiveDate::from_num_days_from_ce_opt(begin_nums_day + x as i32).unwrap();
+                format!("{}", date.to_string())
+            }
+        };
+
+        let label_fmt = move |name: &str, val: &PlotPoint| {
+            format!(
+                "{}:{}\n{}",
+                name,
+                NaiveDate::from_num_days_from_ce_opt(begin_nums_day + val.x as i32).unwrap().to_string(),
+                val.y,
+            )
+        };
 
         Plot::new("Box Plot Demo")
             .legend(Legend::default())
+            .x_axis_formatter(x_fmt)
+            .label_formatter(label_fmt)
             .show(ui, |plot_ui| {
                 loop {
                     if let Some(points) = points_vec.pop() {
@@ -86,7 +108,8 @@ impl ChartsDemo {
         let column_names = vec!["date", "high", "low", "open", "close"];
         for col_name in column_names {
             if let Some(col_data) = self.parse_column(col_name.to_string(), &r) {
-                self.columns.push(NamedColumn::new(col_name.to_string(), col_data));
+                // self.columns.push(NamedColumn::new(col_name.to_string(), col_data));
+                self.columns.insert(col_name.to_string(), col_data);
             }
         }
     }
@@ -97,6 +120,18 @@ impl ChartsDemo {
     }
 }
 
+
+/// parse "2021-12-31" like date to days from ce
+fn date_to_num_days(date: &str) -> i32 {
+    let dt = NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap();
+    return dt.num_days_from_ce();
+}
+
+#[test]
+fn test_date2days() {
+    println!("{}", date_to_num_days(&"2021-12-21".to_string()));
+}
+
 #[test]
 fn test_parse_column() {
     let mut demo = ChartsDemo::default();
@@ -104,8 +139,8 @@ fn test_parse_column() {
     let path = "/Users/sjy/Downloads/former_reinstatement.xlsx".to_string();
     demo.load_excel_data(path.clone(), read_excel(&path).unwrap());
 
-    for col in &demo.columns {
-        println!("col:{}, size={}", col.name, col.data.len());
+    for (col_name, col_data) in &demo.columns {
+        println!("col:{}, size={}", col_name, col_data.len());
     }
     // let col = &demo.columns[0];
     // println!("column {}", col.name);
