@@ -64,7 +64,7 @@ impl eframe::App for TemplateApp {
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::SidePanel::left("side_panel").show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
             ui.label(format!("{}", self.info_label));
             ui.horizontal(|ui| {
@@ -87,6 +87,7 @@ impl eframe::App for TemplateApp {
                                 .set_directory("/")
                                 .pick_file();
                         let data_sender = self.data_channel.0.clone();
+                        let ctx = ctx.clone(); // clone the ctx for closure
                         execute(async move {
                             let file = task.await;
                             if let Some(file) = file {
@@ -97,31 +98,11 @@ impl eframe::App for TemplateApp {
                                 // If you care about wasm support you just read() the file
                                 let raw_data = file.read().await;
                                 data_sender.send(raw_data).ok();
+                                ctx.request_repaint(); // wake up UI thread
                             }
                         });
-                        loop {
-                            match self.data_channel.1.recv() {
-                                Ok(rdata) => {
-                                    // Process FileOpen and other messages
-                                    if let Some(excel_data) = read_excel_wasm(rdata) {
-                                        // successfully read file
-                                        self.chart_demo.load_excel_data("excel_file".to_string(), excel_data);
-                                        self.info_label = "click 'Web Open' to show".to_string();
-                                    } else {
-                                        self.info_label = "cannot open excel file".to_string();
-                                    }
-                                    break;
-                                }
-                                Err(_) => {
-                                    break;
-                                }
-                            }
-                        }
                     }
                 }
-                // if ui.button("Web").clicked() {
-                //     self.info_label = "excel file opened".to_string();
-                // }
                 if ui.button("Close file").clicked() {
                     self.chart_demo.clear();
                     self.info_label = "Select file and plot".to_string();
@@ -139,16 +120,39 @@ impl eframe::App for TemplateApp {
                 }
                 ui.label("Reset view with double-click.");
             });
-            
+            egui::warn_if_debug_build(ui);
+        });
+        egui::CentralPanel::default().show(ctx, |ui|{
+            #[cfg(target_arch = "wasm32")]
+            match self.data_channel.1.try_recv() {
+                Ok(rdata) => {
+                    // Process FileOpen and other messages
+                    if let Some(excel_data) = read_excel_wasm(rdata) {
+                        // successfully read file
+                        self.chart_demo.load_excel_data("excel_file".to_string(), excel_data);
+                        self.info_label = "excel file opened".to_string();
+                    } else {
+                        self.info_label = "cannot open excel file".to_string();
+                    }
+                    println!("Got excel data");
+                }
+                Err(_) => (),
+            }
             if self.chart_demo.filename != None {
                 self.chart_demo.ui(ui);
             }
-            egui::warn_if_debug_build(ui);
         });
     }
 }
 
 use std::future::Future;
+
+// for test locally for the AsyncFileDialog
+#[cfg(not(target_arch = "wasm32"))]
+fn execute<F: Future<Output = ()> + Send + 'static>(f: F) {
+    // this is stupid... use any executor of your choice instead
+    std::thread::spawn(move || futures::executor::block_on(f));
+}
 
 #[cfg(target_arch = "wasm32")]
 fn execute<F: Future<Output = ()> + 'static>(f: F) {
