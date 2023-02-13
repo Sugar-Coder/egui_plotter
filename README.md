@@ -2,11 +2,11 @@
 use egui version 0.20.0
 
 ## dependencies
-eframe - wasm
-rfd - upload file
-chrono - handle date data
-calamine - read excel file
-futures - for test locally of the rfd.AsyncFileDialog
+- eframe - wasm
+- rfd - upload file dialog
+- chrono - handle date data
+- calamine - read excel file
+- futures - for test locally of the rfd.AsyncFileDialog
 
 ## 问题
 1. Done rfd只支持async的OpenDialog
